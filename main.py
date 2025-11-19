@@ -2,6 +2,7 @@ import os
 import numpy as np
 from dotenv import load_dotenv
 import time
+import random
 from typing import Dict, List
 from fastapi import FastAPI
 from pydantic import BaseModel
@@ -15,35 +16,23 @@ from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.chains import create_history_aware_retriever
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_astradb import AstraDBVectorStore
-from embedded_questions import embedded_questions
+from questions import questions
 from embedded_faqs import embedded_faqs
 
 # Functions Below
 
-def get_top_relevant_questions(ai_response, embedded_questions, embedding_model, top_k=3):
+def pick_random_questions(questions, top=3):
     """
-    Converts the ai_response into an embedding, compares it with all embedded_questions,
-    and returns the top K most relevant questions (default: 3).
+    Returns `top` number of random questions from the list.
+    
+    :param questions: list of questions
+    :param top: how many questions to return
+    :return: list of randomly selected questions
     """
-    # Get embedding for AI response
-    response_embedding = embedding_model.embed_query(ai_response)
-
-    # Compute cosine similarity between response and each stored question
-    similarities = []
-    for item in embedded_questions:
-        question_embedding = np.array(item["embedding"])
-        similarity = np.dot(response_embedding, question_embedding) / (
-            np.linalg.norm(response_embedding) * np.linalg.norm(question_embedding)
-        )
-        similarities.append((item["question"], similarity))
-
-    # Sort by similarity score (descending)
-    similarities.sort(key=lambda x: x[1], reverse=True)
-
-    # Return top K question texts
-    top_questions = [q for q, _ in similarities[:top_k]]
-
-    return top_questions
+    # Ensure we don't request more questions than available
+    top = min(top, len(questions))
+    
+    return random.sample(questions, top)
 
 def get_top_faqs(query, embedded_faqs, embedding_model, top_k=2):
     """
@@ -141,11 +130,12 @@ contextualize_system_prompt = (
 )
 
 system_prompt = """
-You are the Fantasy Kitchen assistant chatbot, helping users with questions about Fantasy Kitchen and its services with creativity, clarity, and confidence. 
-Always respond based on the provided context, Related FAQS and focus only on what Fantasy Kitchen offers — explain, recommend, or guide users toward relevant Fantasy Kitchen services, not general ideas or advice. 
-Keep your responses clear, friendly, and professional. Be concise but complete, ensuring the user understands how Fantasy Kitchen can help. 
-If the question is outside Fantasy Kitchen services or unrelated to what Fantasy Kitchen provides, politely respond: 
-"I am here to assist with Fantasy Kitchen services only."
+You are the Fantasy Kitchen Co. assistant chatbot, helping users with questions about Fantasy Kitchen Co. and its services with creativity, clarity, and confidence. 
+Always respond based on the provided context, Related FAQS and focus only on what Fantasy Kitchen Co. offers — explain, recommend, or guide users toward relevant Fantasy Kitchen Co. services, not general ideas or advice. 
+Keep your responses clear, friendly, and professional. Be concise but complete, ensuring the user understands how Fantasy Kitchen Co. can help.
+If asked about Fantasy kitchen Co. then give complete detail. 
+If the question is outside Fantasy Kitchen Co. services or unrelated to what Fantasy Kitchen Co. provides, politely respond: 
+"I am here to assist with Fantasy Kitchen Co. services only."
 Do not provide unrelated or speculative ideas.
 
 # Retrieved Knowledge (RAG)
@@ -231,12 +221,7 @@ def generate_answer(request: UserInput):
         ])
 
         # Get top 3 relevant questions
-        top_questions = get_top_relevant_questions(
-            ai_response=ai_answer,
-            embedded_questions=embedded_questions,
-            embedding_model=embedding_model,
-            top_k=3
-        )
+        top_questions = pick_random_questions(questions, top=3)
 
         return {
             "answer": ai_answer,
